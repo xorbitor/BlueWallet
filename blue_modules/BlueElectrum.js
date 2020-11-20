@@ -26,7 +26,8 @@ const hardcodedPeers = [
   { host: 'electrum3.bluewallet.io', ssl: '443' }, // 2x weight
 ];
 
-let mainClient: ElectrumClient = false;
+/** @type {ElectrumClient} */
+let mainClient;
 let mainConnected = false;
 let wasConnectedAtLeastOnce = false;
 let serverName = false;
@@ -457,10 +458,63 @@ module.exports.waitTillConnected = async function () {
   });
 };
 
+// Returns the value at a given percentile in a sorted numeric array.
+// "Linear interpolation between closest ranks" method
+function percentile(arr, p) {
+  if (arr.length === 0) return 0;
+  if (typeof p !== 'number') throw new TypeError('p must be a number');
+  if (p <= 0) return arr[0];
+  if (p >= 1) return arr[arr.length - 1];
+
+  const index = (arr.length - 1) * p;
+  const lower = Math.floor(index);
+  const upper = lower + 1;
+  const weight = index % 1;
+
+  if (upper >= arr.length) return arr[lower];
+  return arr[lower] * (1 - weight) + arr[upper] * weight;
+}
+
+/**
+ * The histogram is an array of [fee, vsize] pairs, where vsizen is the cumulative virtual size of mempool transactions
+ * with a fee rate in the interval [feen-1, feen], and feen-1 > feen.
+ *
+ * @param numberOfBlocks {Number}
+ * @param feeHistorgram {Array}
+ * @returns {number}
+ */
+module.exports.calcEstimateFeeFromFeeHistorgam = function (numberOfBlocks, feeHistorgram) {
+  let totalVsize = 0;
+  const totalFees = [];
+  for (const h of feeHistorgram) {
+    const [fee, vsize] = h;
+
+    totalFees.push(fee);
+    totalVsize += vsize;
+    if (totalVsize >= 1000000 * numberOfBlocks) {
+      // next addition will overflow to next block
+      return (
+        percentile(
+          totalFees.sort(function (a, b) {
+            return a - b;
+          }),
+          0.5,
+        ) || 1
+      );
+    }
+  }
+
+  // if we made it here it means we dont have enough txs to fill blocks up to `numberOfBlocks`
+  // so optimistically we can return 1
+  return 1;
+};
+
 module.exports.estimateFees = async function () {
-  const fast = await module.exports.estimateFee(1);
-  const medium = await module.exports.estimateFee(18);
-  const slow = await module.exports.estimateFee(144);
+  const histogram = await mainClient.mempool_getFeeHistogram();
+
+  const fast = module.exports.calcEstimateFeeFromFeeHistorgam(1, histogram);
+  const medium = module.exports.calcEstimateFeeFromFeeHistorgam(18, histogram);
+  const slow = module.exports.calcEstimateFeeFromFeeHistorgam(144, histogram);
   return { fast, medium, slow };
 };
 
