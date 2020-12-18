@@ -2097,7 +2097,7 @@ export class BlueBitcoinAmount extends Component {
                     justifyContent: 'center',
                   }}
                 >
-                  {' ' + this.state.unit}
+                  {' ' + loc.units[this.state.unit]}
                 </Text>
               )}
             </View>
@@ -2106,7 +2106,7 @@ export class BlueBitcoinAmount extends Component {
                 {this.state.unit === BitcoinUnit.LOCAL_CURRENCY && amount !== BitcoinUnit.MAX
                   ? removeTrailingZeros(secondaryDisplayCurrency)
                   : secondaryDisplayCurrency}
-                {this.state.unit === BitcoinUnit.LOCAL_CURRENCY && amount !== BitcoinUnit.MAX ? ` ${BitcoinUnit.BTC}` : null}
+                {this.state.unit === BitcoinUnit.LOCAL_CURRENCY && amount !== BitcoinUnit.MAX ? ` ${loc.units[BitcoinUnit.BTC]}` : null}
               </Text>
             </View>
           </View>

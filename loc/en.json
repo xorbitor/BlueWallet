@@ -74,6 +74,8 @@
     "item_nooffers": "No offers. Try to change \"Near me\" to Global offers.",
     "item_rating": "{rating} trades",
     "item_rating_no": "No rating",
+    "local_trader": "Local Trader",
+    "local_trader_new": "New",
     "login": "Login",
     "mycont": "My contracts",
     "offer_accept": "Accept offer",
@@ -500,5 +502,11 @@
     "header": "Coin Control",
     "use_coin": "Use Coin",
     "tip": "Allows you to see, label, freeze or select coins for improved wallet management."
+  },
+  "units": {
+    "BTC": "BTC1",
+    "sats": "sats1",
+    "MAX": "MAX1",
+    "sat_byte": "sat/byte1"
   }
 }
