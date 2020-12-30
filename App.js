@@ -1,6 +1,17 @@
 import 'react-native-gesture-handler'; // should be on top
 import React, { useContext, useEffect, useRef, useState } from 'react';
-import { AppState, DeviceEventEmitter, KeyboardAvoidingView, Linking, Platform, StyleSheet, useColorScheme, View } from 'react-native';
+import {
+  AppState,
+  DeviceEventEmitter,
+  NativeModules,
+  NativeEventEmitter,
+  KeyboardAvoidingView,
+  Linking,
+  Platform,
+  StyleSheet,
+  useColorScheme,
+  View,
+} from 'react-native';
 import { NavigationContainer, CommonActions } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { navigationRef } from './NavigationService';
@@ -27,6 +38,8 @@ import WidgetCommunication from './blue_modules/WidgetCommunication';
 import changeNavigationBarColor from 'react-native-navigation-bar-color';
 const A = require('./blue_modules/analytics');
 
+const eventEmitter = new NativeEventEmitter(NativeModules.EventEmitter);
+
 if (process.env.NODE_ENV !== 'development') {
   Sentry.init({
     dsn: 'https://23377936131848ca8003448a893cb622@sentry.io/1295736',
@@ -51,6 +64,35 @@ const App = () => {
     },
   });
 
+  const fetchWalletTransactionsInReceivedNotification = notification => {
+    const payload = Object.assign({}, notification, notification.data);
+    if (notification.data && notification.data.data) Object.assign(payload, notification.data.data);
+    delete payload.data;
+    let wallet;
+    switch (+payload.type) {
+      case 2:
+      case 3:
+        wallet = wallets.find(w => w.weOwnAddress(payload.address));
+        break;
+      case 1:
+      case 4:
+        wallet = wallets.find(w => w.weOwnTransaction(payload.txid || payload.hash));
+        break;
+    }
+    if (wallet) {
+      const walletID = wallet.getID();
+      fetchAndSaveWalletTransactions(walletID);
+    }
+  };
+
+  const openSettings = () => {
+    NavigationService.dispatch(
+      CommonActions.navigate({
+        name: 'Settings',
+      }),
+    );
+  };
+
   useEffect(() => {
     if (walletsInitialized) {
       addListeners();
@@ -62,6 +104,8 @@ const App = () => {
     return () => {
       Linking.removeEventListener('url', handleOpenURL);
       AppState.removeEventListener('change', handleAppStateChange);
+      eventEmitter.removeAllListeners('onNotificationReceived');
+      eventEmitter.removeAllListeners('openSettings');
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -83,6 +127,8 @@ const App = () => {
     DeviceEventEmitter.addListener('quickActionShortcut', walletQuickActions);
     QuickActions.popInitialAction().then(popInitialAction);
     handleAppStateChange(undefined);
+    eventEmitter.addListener('onNotificationReceived', fetchWalletTransactionsInReceivedNotification);
+    eventEmitter.addListener('openSettings', openSettings);
   };
 
   const popInitialAction = async data => {
@@ -153,7 +199,6 @@ const App = () => {
     const notifications2process = await Notifications.getStoredNotifications();
     for (const payload of notifications2process) {
       const wasTapped = payload.foreground === false || (payload.foreground === true && payload.userInteraction === true);
-      if (!wasTapped) continue;
 
       console.log('processing push notification:', payload);
       let wallet;
@@ -171,16 +216,19 @@ const App = () => {
       if (wallet) {
         const walletID = wallet.getID();
         fetchAndSaveWalletTransactions(walletID);
-        NavigationService.dispatch(
-          CommonActions.navigate({
-            name: 'WalletTransactions',
-            key: `WalletTransactions-${wallet.getID()}`,
-            params: {
-              walletID,
-              walletType: wallet.type,
-            },
-          }),
-        );
+        if (wasTapped) {
+          NavigationService.dispatch(
+            CommonActions.navigate({
+              name: 'WalletTransactions',
+              key: `WalletTransactions-${wallet.getID()}`,
+              params: {
+                walletID,
+                walletType: wallet.type,
+              },
+            }),
+          );
+        }
+
         // no delay (1ms) as we dont need to wait for transaction propagation. 500ms is a delay to wait for the navigation
         await Notifications.clearStoredNotifications();
         return true;
